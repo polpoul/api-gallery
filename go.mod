@@ -1,6 +1,6 @@
 module github.com/you/api-gallery
 
-go 1.22
+go 1.25
 
 require (
 	github.com/disintegration/imaging v1.6.2
