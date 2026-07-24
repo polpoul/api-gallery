@@ -1,0 +1,4 @@
+.env
+*.exe
+/photos-test/
+/cache-test/
