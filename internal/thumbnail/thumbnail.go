@@ -1,0 +1,76 @@
+// Package thumbnail generates resized JPEG previews of photos on first
+// request and caches them on disk. The cache key embeds the source file's
+// size and modification time, so replacing a file (e.g. via rsync) via a
+// new file naturally busts the cache.
+package thumbnail
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/disintegration/imaging"
+	"golang.org/x/sync/singleflight"
+)
+
+const (
+	maxDimension = 400
+	jpegQuality  = 82
+)
+
+type Cache struct {
+	dir   string
+	group singleflight.Group
+}
+
+func New(dir string) *Cache {
+	return &Cache{dir: dir}
+}
+
+// Get returns the path to a cached thumbnail for the given source photo,
+// generating it if necessary. albumID/photoID are used only to namespace
+// the cache directory; modTime/size feed the cache-busting key.
+func (c *Cache) Get(albumID, photoID, srcPath string, modTime, size int64) (string, error) {
+	key := cacheKey(srcPath, modTime, size)
+	dst := filepath.Join(c.dir, albumID, photoID+"-"+key+".jpg")
+
+	if _, err := os.Stat(dst); err == nil {
+		return dst, nil
+	}
+
+	_, err, _ := c.group.Do(dst, func() (interface{}, error) {
+		if _, err := os.Stat(dst); err == nil {
+			return nil, nil
+		}
+		return nil, generate(srcPath, dst)
+	})
+	if err != nil {
+		return "", err
+	}
+	return dst, nil
+}
+
+func generate(srcPath, dstPath string) error {
+	img, err := imaging.Open(srcPath, imaging.AutoOrientation(true))
+	if err != nil {
+		return fmt.Errorf("decode %s: %w", srcPath, err)
+	}
+
+	thumb := imaging.Fit(img, maxDimension, maxDimension, imaging.Lanczos)
+
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir cache dir: %w", err)
+	}
+
+	if err := imaging.Save(thumb, dstPath, imaging.JPEGQuality(jpegQuality)); err != nil {
+		return fmt.Errorf("encode thumbnail: %w", err)
+	}
+	return nil
+}
+
+func cacheKey(srcPath string, modTime, size int64) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", srcPath, modTime, size)))
+	return hex.EncodeToString(h[:])[:16]
+}
