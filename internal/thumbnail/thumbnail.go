@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"image"
+	_ "image/jpeg"
 	"os"
 	"path/filepath"
 
@@ -83,16 +85,13 @@ func generate(srcPath, dstPath string) error {
 		return fmt.Errorf("close temp file: %w", err)
 	}
 
-	// Garde-fou: certains fichiers source produisent un encodage de 0 octet
-	// sans que imaging.Encode ne renvoie d'erreur (cause encore non identifiée,
-	// probablement une limite du décodeur JPEG de Go sur des cas particuliers).
-	// Un fichier vide ne doit jamais atteindre le cache/le client.
-	info, err := os.Stat(tmpPath)
-	if err != nil {
-		return fmt.Errorf("stat temp file: %w", err)
-	}
-	if info.Size() == 0 {
-		return fmt.Errorf("generated thumbnail is empty (0 bytes) for %s", srcPath)
+	// Garde-fou: valide que le fichier généré est un JPEG complet et
+	// décodable avant de le mettre en cache. Une écriture interrompue peut
+	// laisser un fichier non-vide mais tronqué (en-tête présent, données
+	// de scan coupées) - une simple vérification de taille ne suffit pas
+	// à détecter ce cas, il faut re-décoder pour être sûr.
+	if err := verifyDecodable(tmpPath); err != nil {
+		return fmt.Errorf("generated thumbnail is invalid for %s: %w", srcPath, err)
 	}
 
 	if err := os.Rename(tmpPath, dstPath); err != nil {
@@ -104,4 +103,20 @@ func generate(srcPath, dstPath string) error {
 func cacheKey(srcPath string, modTime, size int64) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", srcPath, modTime, size)))
 	return hex.EncodeToString(h[:])[:16]
+}
+
+// verifyDecodable fully decodes the file to make sure it's a complete,
+// valid image - catching truncated files (present but cut short mid-write)
+// that a size-only check would miss.
+func verifyDecodable(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, _, err := image.Decode(f); err != nil {
+		return fmt.Errorf("decode check failed: %w", err)
+	}
+	return nil
 }
