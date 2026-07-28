@@ -36,12 +36,12 @@ func (c *Cache) Get(albumID, photoID, srcPath string, modTime, size int64) (stri
 	key := cacheKey(srcPath, modTime, size)
 	dst := filepath.Join(c.dir, albumID, photoID+"-"+key+".jpg")
 
-	if _, err := os.Stat(dst); err == nil {
+	if info, err := os.Stat(dst); err == nil && info.Size() > 0 {
 		return dst, nil
 	}
 
 	_, err, _ := c.group.Do(dst, func() (interface{}, error) {
-		if _, err := os.Stat(dst); err == nil {
+		if info, err := os.Stat(dst); err == nil && info.Size() > 0 {
 			return nil, nil
 		}
 		return nil, generate(srcPath, dst)
