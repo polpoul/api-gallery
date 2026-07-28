@@ -34,7 +34,7 @@ func New(dir string) *Cache {
 // the cache directory; modTime/size feed the cache-busting key.
 func (c *Cache) Get(albumID, photoID, srcPath string, modTime, {
       key := cacheKey(srcPath, modTime, size)
-      dst := filepath.Join(c.dir, albumID, photoID+"-"+key+".j
+      dst := filepath.Join(c.dir, albumID, photoID+"-"+key+".jpg")
 
       if _, err := os.Stat(dst); err == nil {
               return dst, nil
@@ -67,7 +67,7 @@ func generate(srcPath, dstPath string) error {
       // Écrit dans un fichier temporaire puis renomme atomiquement: si le
       // processus est interrompu (redémarrage du conteneur, OOM...) pendant
       // l'encodage, le fichier final n'existe jamais dans un état tronqué -
-      // soit il est absent (régénéré au prochain appel), soit
+      // soit il est absent (régénéré au prochain appel), soit il est complet.
       tmpFile, err := os.CreateTemp(filepath.Dir(dstPath), ".tmp-*.jpg")
       if err != nil {
               return fmt.Errorf("create temp file: %w", err)
