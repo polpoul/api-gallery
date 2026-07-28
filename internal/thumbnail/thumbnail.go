@@ -83,6 +83,18 @@ func generate(srcPath, dstPath string) error {
 		return fmt.Errorf("close temp file: %w", err)
 	}
 
+	// Garde-fou: certains fichiers source produisent un encodage de 0 octet
+	// sans que imaging.Encode ne renvoie d'erreur (cause encore non identifiée,
+	// probablement une limite du décodeur JPEG de Go sur des cas particuliers).
+	// Un fichier vide ne doit jamais atteindre le cache/le client.
+	info, err := os.Stat(tmpPath)
+	if err != nil {
+		return fmt.Errorf("stat temp file: %w", err)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("generated thumbnail is empty (0 bytes) for %s", srcPath)
+	}
+
 	if err := os.Rename(tmpPath, dstPath); err != nil {
 		return fmt.Errorf("rename temp file to %s: %w", dstPath, err)
 	}
