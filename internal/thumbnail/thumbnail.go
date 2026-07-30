@@ -25,10 +25,19 @@ const (
 type Cache struct {
 	dir   string
 	group singleflight.Group
+	sem   chan struct{}
 }
 
-func New(dir string) *Cache {
-	return &Cache{dir: dir}
+// New creates a thumbnail cache. maxConcurrent bounds how many thumbnails can
+// be generated (decode + resize + encode) at the same time, regardless of how
+// many requests come in at once - opening an album fires dozens of thumbnail
+// requests in a burst, and generating all of them in parallel can overload a
+// small VPS. Extra requests simply queue and wait their turn.
+func New(dir string, maxConcurrent int) *Cache {
+	if maxConcurrent <= 0 {
+		maxConcurrent = 1
+	}
+	return &Cache{dir: dir, sem: make(chan struct{}, maxConcurrent)}
 }
 
 // Get returns the path to a cached thumbnail for the given source photo,
@@ -46,6 +55,8 @@ func (c *Cache) Get(albumID, photoID, srcPath string, modTime, size int64) (stri
 		if info, err := os.Stat(dst); err == nil && info.Size() > 0 {
 			return nil, nil
 		}
+		c.sem <- struct{}{}
+		defer func() { <-c.sem }()
 		return nil, generate(srcPath, dst)
 	})
 	if err != nil {
