@@ -47,7 +47,8 @@ func main() {
 	}
 	log.Printf("indexed %d albums from %s", len(idx.Albums()), cfg.PhotosRoot)
 
-	thumbs := thumbnail.New(cfg.CacheDir)
+	thumbs := thumbnail.New(cfg.CacheDir, cfg.ThumbnailConcurrency)
+	log.Printf("thumbnail generation concurrency: %d", cfg.ThumbnailConcurrency)
 	auth := authmw.New(cfg.AuthServiceURL)
 
 	srv := &httpapi.Server{Index: idx, Thumbnails: thumbs}
